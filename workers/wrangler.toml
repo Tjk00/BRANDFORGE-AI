@@ -1,0 +1,15 @@
+# Standalone Cloudflare Worker deployment (alternative to Pages).
+# Usage:
+#   npm run build:client
+#   npx wrangler deploy --config workers/wrangler.toml
+name = "brandforge-ai"
+main = "index.ts"
+compatibility_date = "2026-11-01"
+
+[assets]
+directory = "../dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# Optional AI provider secrets:
+#   npx wrangler secret put AI_API_KEY --config workers/wrangler.toml
