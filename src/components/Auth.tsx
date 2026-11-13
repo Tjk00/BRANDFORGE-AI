@@ -26,15 +26,13 @@ export default function Auth({ onSignedIn, onSkip, notice }: AuthProps) {
     try {
       const session =
         mode === 'register'
-          ? await account.register(email.trim(), password, name.trim())
-          : await account.login(email.trim(), password);
+          ? await account.register({ email: email.trim(), password, name: name.trim() })
+          : await account.login({ email: email.trim(), password });
       onSignedIn(session);
     } catch (caught) {
       setError(
         caught instanceof ApiError
-          ? caught.detail
-            ? `${caught.message} ${caught.detail}`
-            : caught.message
+          ? caught.message
           : 'Could not reach the server. Check your connection and try again.',
       );
     } finally {

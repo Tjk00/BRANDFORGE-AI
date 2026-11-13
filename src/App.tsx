@@ -171,7 +171,7 @@ function Studio() {
     if (signedIn && session.projectLimit > 0 && projects.length >= session.projectLimit) {
       toast(
         `Your ${plan ? plan.name : 'current'} plan includes ${session.projectLimit} brands. Delete one or upgrade to add more.`,
-        'warn',
+        'bad',
       );
       setView('settings');
       return;
@@ -197,7 +197,7 @@ function Studio() {
   const removeBrand = useCallback(
     async (id: string) => {
       const target = projects.find((project) => project.id === id);
-      if (!window.confirm(`Delete “${target?.name ?? 'this brand'}”? This cannot be undone.`)) return;
+      if (!window.confirm(`Delete “${target?.workingTitle ?? 'this brand'}”? This cannot be undone.`)) return;
       const next = projects.filter((project) => project.id !== id);
       const nextActive = activeId === id ? next[0]?.id ?? null : activeId;
       setProjects(next);
@@ -332,7 +332,7 @@ function Studio() {
               const copy: BrandProject = {
                 ...source,
                 id: `bp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
-                name: `${source.name} copy`,
+                workingTitle: `${source.workingTitle} copy`,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               };
@@ -635,7 +635,7 @@ function Studio() {
                   <div className="bf-panel-head">
                     <div>
                       <span className="bf-eyebrow">
-                        Stage {stageIndex + 1} of {STAGES.length} · {active.name}
+                        Stage {stageIndex + 1} of {STAGES.length} · {active.workingTitle || active.chosenName}
                       </span>
                       <h1 className="bf-panel-title">{STAGES[stageIndex].title}</h1>
                       <p className="bf-panel-hint">{STAGES[stageIndex].blurb}</p>

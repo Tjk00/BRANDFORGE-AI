@@ -6,7 +6,8 @@
  * no statistics are invented.
  */
 
-import { PLATFORM_IDS, type PlatformId } from './domain';
+import type { PlatformId } from './domain';
+import { PLATFORM_IDS } from './platforms';
 
 export interface BrandVoice {
   businessDescription: string;
