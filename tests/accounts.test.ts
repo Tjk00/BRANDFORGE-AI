@@ -239,7 +239,7 @@ describe('administration', () => {
     expect(read.status).toBe(200);
     const serialized = JSON.stringify(read.body);
     expect(serialized).not.toContain('sk-secret-value');
-    expect((read.body as { providers: { hasKey: boolean } }).providers.hasKey).toBe(true);
+    expect((read.body as { providers: { configured: boolean } }).providers.configured).toBe(true);
   });
 
   it('keeps billing inactive until a payment provider is configured', async () => {

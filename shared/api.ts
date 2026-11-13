@@ -5,7 +5,7 @@ import { getNiche, NICHES } from './niches';
 import { PALETTES } from './palettes';
 import { getPlatform, isPlatformId, PLATFORMS, PLATFORM_IDS } from './platforms';
 import { routeAccounts } from './accounts';
-import type { Repository } from './store';
+import { AppError, type Repository } from './store';
 import type { AiSettings, NameStyle, NameTarget, PlatformId } from './types';
 
 export interface ApiRequest {
@@ -380,15 +380,22 @@ export async function routeApi(request: ApiRequest): Promise<ApiResponse> {
         'This host has no storage binding. The studio still works locally without an account.',
       );
     }
-    const accountResponse = await routeAccounts({
-      method,
-      path,
-      payload,
-      env,
-      headers: request.headers ?? {},
-      store: request.store,
-    });
-    if (accountResponse) return accountResponse;
+    try {
+      const accountResponse = await routeAccounts({
+        method,
+        path,
+        payload,
+        env,
+        headers: request.headers ?? {},
+        store: request.store,
+      });
+      if (accountResponse) return accountResponse;
+    } catch (error) {
+      // Authorization and validation failures are expected outcomes, not crashes:
+      // surface them as a normal JSON error so the client can react.
+      if (error instanceof AppError) return fail(error.status, error.message);
+      throw error;
+    }
   }
 
   return fail(404, 'Unknown API route.', `${method} ${path}`);
