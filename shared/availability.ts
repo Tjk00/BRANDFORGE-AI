@@ -18,8 +18,10 @@ const MAX_BODY = 400_000;
 export function normalizeHandle(raw: string): string {
   return raw
     .trim()
+    // Full URLs first, so the "@" they contain is still stripped below.
+    .replace(/^https?:\/\/[^/]+\//i, '')
+    .replace(/^(?:www\.)?[a-z0-9-]+\.[a-z]{2,}\//i, '')
     .replace(/^@+/, '')
-    .replace(/https?:\/\/[^/]+\//i, '')
     .replace(/[/?#].*$/, '')
     .replace(/\s+/g, '')
     .toLowerCase();

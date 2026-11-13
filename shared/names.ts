@@ -246,7 +246,7 @@ export function generateNames(request: NameRequest): GeneratedName[] {
 
 export function normalizeNameInput(raw: string): string[] {
   return raw
-    .split(/[,\n]/)
+    .split(/[,\n;|]+/)
     .map((part) => part.trim())
     .filter((part) => part.length > 0)
     .slice(0, 6);

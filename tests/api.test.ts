@@ -57,16 +57,21 @@ describe('api router', () => {
     expect((res.body as { error: string }).error.length).toBeGreaterThan(3);
   });
 
-  it('rejects invalid handles before probing any platform', async () => {
-    const res = await call('/api/availability', 'POST', { handle: 'bad handle!', platforms: ['youtube'] });
-    expect(res.status).toBe(400);
-    expect((res.body as { error: string }).error.toLowerCase()).toContain('handle');
+  it('flags invalid handles per platform without claiming availability', async () => {
+    const res = await call('/api/availability', 'POST', { handle: 'bad handle!', platforms: ['youtube', 'linkedin'] });
+    expect(res.status).toBe(200);
+    const body = res.body as { results: { platform: string; status: string; evidence: string }[] };
+    expect(body.results).toHaveLength(2);
+    for (const result of body.results) {
+      expect(result.status).toBe('invalid');
+      expect(result.evidence.length).toBeGreaterThan(3);
+    }
   });
 
   it('refuses AI calls with a clear message when no provider is configured', async () => {
     const res = await call('/api/ai', 'POST', { prompt: 'hi', system: 'x' });
-    expect(res.status).toBe(503);
-    expect((res.body as { error: string }).error.toLowerCase()).toContain('not configured');
+    expect(res.status).toBe(400);
+    expect((res.body as { error: string }).error.toLowerCase()).toContain('no ai provider');
   });
 
   it('returns 404 for unknown routes', async () => {

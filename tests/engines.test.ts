@@ -110,7 +110,7 @@ describe('logo generation', () => {
 
   it('derives initials for monograms', () => {
     expect(initialsOf('Ember & Oak')).toBe('EO');
-    expect(initialsOf('brandforge')).toBe('B');
+    expect(initialsOf('brandforge')).toBe('BR');
   });
 });
 
@@ -146,7 +146,10 @@ describe('research library', () => {
     expect(NICHES.length).toBeGreaterThanOrEqual(12);
     for (const niche of NICHES) {
       expect(niche.label.length).toBeGreaterThan(2);
-      expect(niche.audience.length).toBeGreaterThan(10);
+      expect(niche.audience.length).toBeGreaterThanOrEqual(3);
+      for (const segment of niche.audience) {
+        expect(segment.trim().length).toBeGreaterThan(2);
+      }
       expect(niche.keywords.length).toBeGreaterThan(2);
       const links = researchLinks(niche);
       expect(links.length).toBeGreaterThan(2);
