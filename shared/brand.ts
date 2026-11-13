@@ -1,4 +1,5 @@
 import type { AvailabilityResult, GeneratedName, Palette, PlatformId } from './domain';
+import type { BrandVoice } from './voice';
 
 export type LogoSvgStyle =
   | 'wordmark'
@@ -36,6 +37,11 @@ export interface BrandProject {
   copy: BrandCopy | null;
   handles: AvailabilityResult[];
   notes: string;
+  /** Optional so projects saved by earlier versions keep loading. */
+  voice?: BrandVoice | null;
+  audience?: string;
+  tone?: string;
+  favorites?: string[];
 }
 
 export interface AiSettings {
