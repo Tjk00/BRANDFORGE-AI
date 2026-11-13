@@ -3,10 +3,16 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { routeApi } from '../shared/api';
+import { Repository } from '../shared/store';
+import { FileKv } from './file-store';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(here, '..');
 const distDir = existsSync(path.join(projectRoot, 'dist')) ? path.join(projectRoot, 'dist') : path.join(here, '..', 'dist');
+
+// Accounts persist to disk on this host. Cloudflare deployments use D1 instead.
+const dataDir = process.env.BRANDFORGE_DATA_DIR ?? path.join(projectRoot, 'data');
+const repository = new Repository(new FileKv(path.join(dataDir, 'store.json')));
 
 const app = express();
 app.disable('x-powered-by');
@@ -54,7 +60,9 @@ app.all('/api/*splat', async (req, res) => {
       method: req.method,
       path: req.path,
       body: req.body,
+      headers: req.headers as Record<string, string | undefined>,
       env: process.env as Record<string, string | undefined>,
+      store: repository,
     });
     if (response.headers) res.set(response.headers);
     res.status(response.status).json(response.body);

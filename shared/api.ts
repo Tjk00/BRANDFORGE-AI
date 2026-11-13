@@ -4,6 +4,8 @@ import { generateNames, normalizeNameInput } from './names';
 import { getNiche, NICHES } from './niches';
 import { PALETTES } from './palettes';
 import { getPlatform, isPlatformId, PLATFORMS, PLATFORM_IDS } from './platforms';
+import { routeAccounts } from './accounts';
+import type { Repository } from './store';
 import type { AiSettings, NameStyle, NameTarget, PlatformId } from './types';
 
 export interface ApiRequest {
@@ -11,6 +13,10 @@ export interface ApiRequest {
   path: string;
   body?: unknown;
   env?: Record<string, string | undefined>;
+  /** Request headers, used for session cookies and client IP. */
+  headers?: Record<string, string | undefined>;
+  /** Present when the host has a storage driver (file on Node, D1 on Cloudflare). */
+  store?: Repository;
 }
 
 export interface ApiResponse {
@@ -229,8 +235,26 @@ function resolveAi(payload: Record<string, unknown>, env: Record<string, string 
   return settings;
 }
 
-async function ai(payload: Record<string, unknown>, env: Record<string, string | undefined>): Promise<ApiResponse> {
+async function ai(
+  payload: Record<string, unknown>,
+  env: Record<string, string | undefined>,
+  store?: Repository,
+): Promise<ApiResponse> {
   const settings = resolveAi(payload, env);
+
+  // An administrator-managed key can fill in when no environment key exists.
+  if (!settings.apiKey && store) {
+    const config = await store.getProviders();
+    if (config.enabled && config.apiKey) {
+      settings.apiKey = config.apiKey;
+      const incoming = asRecord(payload.ai);
+      const hasBaseUrl = typeof incoming.baseUrl === 'string' && Boolean(incoming.baseUrl.trim());
+      const hasModel = typeof incoming.model === 'string' && Boolean(incoming.model.trim());
+      if (!hasBaseUrl && !env.AI_BASE_URL) settings.baseUrl = config.baseUrl;
+      if (!hasModel && !env.AI_MODEL) settings.model = config.model;
+    }
+  }
+
   if (!settings.apiKey) {
     return fail(
       400,
@@ -307,6 +331,7 @@ export async function routeApi(request: ApiRequest): Promise<ApiResponse> {
       app: 'BRANDFORGE AI',
       version: '1.0.0',
       aiConfigured: Boolean(env.AI_API_KEY),
+      accountsEnabled: Boolean(request.store),
       platforms: PLATFORM_IDS.length,
       niches: NICHES.length,
       palettes: PALETTES.length,
@@ -339,7 +364,31 @@ export async function routeApi(request: ApiRequest): Promise<ApiResponse> {
   }
 
   if (path === '/api/ai' && method === 'POST') {
-    return ai(payload, env);
+    return ai(payload, env, request.store);
+  }
+
+  if (
+    path.startsWith('/api/auth') ||
+    path.startsWith('/api/projects') ||
+    path.startsWith('/api/admin') ||
+    path.startsWith('/api/billing')
+  ) {
+    if (!request.store) {
+      return fail(
+        503,
+        'Accounts are not enabled on this deployment.',
+        'This host has no storage binding. The studio still works locally without an account.',
+      );
+    }
+    const accountResponse = await routeAccounts({
+      method,
+      path,
+      payload,
+      env,
+      headers: request.headers ?? {},
+      store: request.store,
+    });
+    if (accountResponse) return accountResponse;
   }
 
   return fail(404, 'Unknown API route.', `${method} ${path}`);
