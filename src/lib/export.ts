@@ -79,10 +79,17 @@ export interface KitProgress {
   percent: number;
 }
 
-export async function buildBrandKitZip(
+/**
+ * SVG rasteriser. The browser supplies canvas; tests supply a stub so the exact
+ * archive contents can be verified without a DOM.
+ */
+export type Rasterizer = (svg: string, width: number, height: number) => Promise<Blob | Uint8Array>;
+
+async function buildKitBytes(
   project: BrandProject,
-  onProgress?: (progress: KitProgress) => void,
-): Promise<Blob> {
+  onProgress: ((progress: KitProgress) => void) | undefined,
+  rasterize: Rasterizer,
+): Promise<Uint8Array> {
   const zip = new JSZip();
   const palette = resolvePalette(project);
   const copy = resolveCopy(project);
@@ -173,7 +180,7 @@ export async function buildBrandKitZip(
     });
     logos.file(`logo-${style.id}.svg`, svg);
     try {
-      logos.file(`logo-${style.id}.png`, await svgToPng(svg, 1024, 1024));
+      logos.file(`logo-${style.id}.png`, await rasterize(svg, 1024, 1024));
     } catch {
       // PNG is a convenience export; the SVG master is always written.
     }
@@ -187,7 +194,7 @@ export async function buildBrandKitZip(
     const svg = renderAvatar({ name, palette, size: 512, style });
     avatars.file(`avatar-${style}-512.svg`, svg);
     try {
-      avatars.file(`avatar-${style}-512.png`, await svgToPng(svg, 512, 512));
+      avatars.file(`avatar-${style}-512.png`, await rasterize(svg, 512, 512));
     } catch {
       // keep the SVG when rasterising is blocked
     }
@@ -195,7 +202,7 @@ export async function buildBrandKitZip(
   for (const platform of PLATFORMS) {
     const svg = renderAvatar({ name, palette, size: platform.avatarSize, style: 'monogram' });
     try {
-      avatars.file(`${platform.id}-${platform.avatarSize}.png`, await svgToPng(svg, platform.avatarSize, platform.avatarSize));
+      avatars.file(`${platform.id}-${platform.avatarSize}.png`, await rasterize(svg, platform.avatarSize, platform.avatarSize));
     } catch {
       avatars.file(`${platform.id}-${platform.avatarSize}.svg`, svg);
     }
@@ -224,7 +231,7 @@ export async function buildBrandKitZip(
       showSafeArea: true,
     }));
     try {
-      banners.file(`${spec.id}.png`, await svgToPng(svg, spec.width, spec.height));
+      banners.file(`${spec.id}.png`, await rasterize(svg, spec.width, spec.height));
     } catch {
       // SVG remains the master file
     }
@@ -379,7 +386,33 @@ ${project.handles
   tick('Brand guidelines');
 
   onProgress?.({ step: 'Compressing', percent: 96 });
-  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  const bytes = await zip.generateAsync({
+    type: 'uint8array',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  });
   onProgress?.({ step: 'Done', percent: 100 });
-  return blob;
+  return bytes;
+}
+
+/** Browser download path: rasterises through canvas and returns a Blob. */
+export async function buildBrandKitZip(
+  project: BrandProject,
+  onProgress?: (progress: KitProgress) => void,
+): Promise<Blob> {
+  const bytes = await buildKitBytes(project, onProgress, svgToPng);
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return new Blob([copy.buffer], { type: 'application/zip' });
+}
+
+/**
+ * Host-independent archive builder used by the automated tests. It performs no
+ * DOM access, so the exported file list can be verified in Node.
+ */
+export async function buildBrandKitArchive(
+  project: BrandProject,
+  options: { rasterize?: Rasterizer } = {},
+): Promise<Uint8Array> {
+  return buildKitBytes(project, undefined, options.rasterize ?? svgToPng);
 }
