@@ -1,8 +1,10 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { routeApi } from '../shared/api';
+import { logEvent } from '../shared/logger';
 import { Repository } from '../shared/store';
 import { FileKv } from './file-store';
 
@@ -16,42 +18,27 @@ const repository = new Repository(new FileKv(path.join(dataDir, 'store.json')));
 
 const app = express();
 app.disable('x-powered-by');
+// AppJet and most hosts terminate TLS in front of the app, so trust one proxy hop
+// to obtain the real client address used by the shared rate limiter.
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '512kb' }));
 
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   next();
 });
 
-// Simple per-IP throttle so the availability endpoint is not used as a proxy for bulk scraping.
-const buckets = new Map<string, { tokens: number; updated: number }>();
-const CAPACITY = 40;
-const REFILL_PER_SECOND = 0.5;
-
-function allowRequest(ip: string): boolean {
-  const now = Date.now();
-  const bucket = buckets.get(ip) ?? { tokens: CAPACITY, updated: now };
-  const elapsed = (now - bucket.updated) / 1000;
-  bucket.tokens = Math.min(CAPACITY, bucket.tokens + elapsed * REFILL_PER_SECOND);
-  bucket.updated = now;
-  if (bucket.tokens < 1) {
-    buckets.set(ip, bucket);
-    return false;
-  }
-  bucket.tokens -= 1;
-  buckets.set(ip, bucket);
-  return true;
-}
-
-app.use('/api', (req, res, next) => {
-  if (req.path === '/health') return next();
-  if (!allowRequest(req.ip ?? 'unknown')) {
-    res.status(429).json({ error: 'Too many requests. Wait a moment and try again.' });
-    return;
-  }
-  return next();
+// Rate limiting lives in the shared router (shared/rate-limit.ts) so Node,
+// Cloudflare Pages and the Worker enforce identical budgets.
+app.use((req, res, next) => {
+  const incoming = req.get('x-request-id');
+  const requestId = incoming && incoming.length <= 64 ? incoming : randomUUID();
+  res.setHeader('x-request-id', requestId);
+  (req as express.Request & { requestId?: string }).requestId = requestId;
+  next();
 });
 
 app.all('/api/*splat', async (req, res) => {
@@ -63,11 +50,16 @@ app.all('/api/*splat', async (req, res) => {
       headers: req.headers as Record<string, string | undefined>,
       env: process.env as Record<string, string | undefined>,
       store: repository,
+      clientIp: req.ip,
+      requestId: (req as express.Request & { requestId?: string }).requestId,
     });
     if (response.headers) res.set(response.headers);
     res.status(response.status).json(response.body);
   } catch (err) {
-    console.error('[api] unhandled error', err instanceof Error ? err.message : err);
+    logEvent('error', 'server.api_unhandled', {
+      path: req.path,
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: 'The server could not complete that request.' });
   }
 });
@@ -90,8 +82,19 @@ app.use((req, res) => {
     .send('The client bundle is missing. Run "npm run build" before starting the server.');
 });
 
+// Malformed JSON and any other framework-level error still answer with JSON.
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const parseFailure =
+    err instanceof SyntaxError || (err as { type?: string } | null)?.type === 'entity.parse.failed';
+  if (parseFailure) {
+    res.status(400).json({ error: 'The request body was not valid JSON.' });
+    return;
+  }
+  logEvent('error', 'server.unhandled', { error: err instanceof Error ? err.message : String(err) });
+  res.status(500).json({ error: 'The server could not complete that request.' });
+});
+
 const port = Number(process.env.PORT ?? 8787);
 app.listen(port, '0.0.0.0', () => {
-  console.log(`BRANDFORGE AI API listening on http://0.0.0.0:${port}`);
-  console.log(`Serving client from ${distDir}`);
+  logEvent('info', 'server.started', { port, distDir });
 });

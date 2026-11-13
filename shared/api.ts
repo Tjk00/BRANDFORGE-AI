@@ -5,6 +5,8 @@ import { getNiche, NICHES } from './niches';
 import { PALETTES } from './palettes';
 import { getPlatform, isPlatformId, PLATFORMS, PLATFORM_IDS } from './platforms';
 import { routeAccounts } from './accounts';
+import { logEvent } from './logger';
+import { rateLimit, RATE_RULES } from './rate-limit';
 import { AppError, type Repository } from './store';
 import type { AiSettings, NameStyle, NameTarget, PlatformId } from './types';
 
@@ -17,6 +19,10 @@ export interface ApiRequest {
   headers?: Record<string, string | undefined>;
   /** Present when the host has a storage driver (file on Node, D1 on Cloudflare). */
   store?: Repository;
+  /** Caller address, used for rate limiting. Internal calls omit it. */
+  clientIp?: string;
+  /** Correlation id echoed back and written to the structured log. */
+  requestId?: string;
 }
 
 export interface ApiResponse {
@@ -319,11 +325,53 @@ async function ai(
 
 /* ----------------------------------------------------------------------- router */
 
-export async function routeApi(request: ApiRequest): Promise<ApiResponse> {
+const RATE_LIMITED_ROUTES: {
+  bucket: keyof typeof RATE_RULES;
+  label: string;
+  match: (path: string) => boolean;
+}[] = [
+  { bucket: 'ai', label: 'AI requests', match: (path) => path === '/api/ai' },
+  { bucket: 'availability', label: 'handle checks', match: (path) => path === '/api/availability' },
+  { bucket: 'generate', label: 'generation requests', match: (path) => path === '/api/names' || path === '/api/copy' },
+  { bucket: 'auth', label: 'account requests', match: (path) => path.startsWith('/api/auth/') },
+];
+
+function generateRequestId(): string {
+  const cryptoApi = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return cryptoApi?.randomUUID?.() ?? `req_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function enforceRateLimit(request: ApiRequest, path: string, method: string): ApiResponse | null {
+  if (method === 'GET' || method === 'HEAD') return null;
+  const identity = request.clientIp?.trim();
+  // Internal calls (tests, same-process invocations) carry no client identity.
+  // Every real host passes the caller address, so those calls are throttled.
+  if (!identity) return null;
+
+  const route = RATE_LIMITED_ROUTES.find((entry) => entry.match(path));
+  if (!route) return null;
+
+  const outcome = rateLimit(route.bucket, identity, RATE_RULES[route.bucket]);
+  if (outcome.allowed) return null;
+
+  return {
+    status: 429,
+    body: {
+      error: `Too many ${route.label}. Try again in ${outcome.retryAfterSeconds}s.`,
+      retryAfter: outcome.retryAfterSeconds,
+    },
+    headers: { ...JSON_HEADERS, 'Retry-After': String(outcome.retryAfterSeconds) },
+  };
+}
+
+async function handleApiRequest(request: ApiRequest): Promise<ApiResponse> {
   const path = request.path.replace(/\/+$/, '') || '/';
   const method = request.method.toUpperCase();
   const payload = asRecord(request.body);
   const env = request.env ?? {};
+
+  const limited = enforceRateLimit(request, path, method);
+  if (limited) return limited;
 
   if (path === '/api/health' || path === '/api') {
     return ok({
@@ -399,4 +447,47 @@ export async function routeApi(request: ApiRequest): Promise<ApiResponse> {
   }
 
   return fail(404, 'Unknown API route.', `${method} ${path}`);
+}
+
+/**
+ * Public entry point for every host. Adds a correlation id, structured request
+ * logging, rate limiting and a JSON 500 so an unexpected failure never leaks a
+ * stack trace or an HTML error page to the client.
+ */
+export async function routeApi(request: ApiRequest): Promise<ApiResponse> {
+  const started = Date.now();
+  const requestId = (request.requestId ?? '').slice(0, 64) || generateRequestId();
+
+  try {
+    const response = await handleApiRequest(request);
+    logEvent(
+      response.status >= 500 ? 'error' : response.status >= 400 ? 'warn' : 'info',
+      'api.request',
+      {
+        requestId,
+        method: request.method.toUpperCase(),
+        path: request.path,
+        status: response.status,
+        durationMs: Date.now() - started,
+      },
+    );
+    return {
+      ...response,
+      headers: { ...(response.headers ?? JSON_HEADERS), 'x-request-id': requestId },
+    };
+  } catch (error) {
+    logEvent('error', 'api.unhandled', {
+      requestId,
+      method: request.method.toUpperCase(),
+      path: request.path,
+      durationMs: Date.now() - started,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? (error.stack ?? '').split('\n').slice(0, 3).join(' | ') : undefined,
+    });
+    return {
+      status: 500,
+      body: { error: 'The server could not complete that request.', requestId },
+      headers: { ...JSON_HEADERS, 'x-request-id': requestId },
+    };
+  }
 }
