@@ -43,9 +43,11 @@ describe('name generation', () => {
     expect(names.every((n) => n.style === 'alliterative')).toBe(true);
   });
 
-  it('normalises keyword input and slugs safely', () => {
+  it('normalises keyword input and produces handle-safe slugs', () => {
     expect(normalizeNameInput('coffee, beans;  Roastery')).toEqual(['coffee', 'beans', 'Roastery']);
-    expect(slugify('Ember & Oak!')).toBe('ember-oak');
+    // Slugs double as handle suggestions, so they must avoid hyphens (invalid on X/Instagram).
+    expect(slugify('Ember & Oak!')).toBe('emberoak');
+    expect(slugify('Ember & Oak!')).toMatch(/^[a-z0-9.]+$/);
   });
 });
 
