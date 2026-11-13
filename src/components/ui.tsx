@@ -200,6 +200,7 @@ export function TextInput({
   inputMode,
   maxLength,
   onEnter,
+  type = 'text',
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -207,10 +208,12 @@ export function TextInput({
   inputMode?: 'text' | 'numeric' | 'email' | 'url' | 'search';
   maxLength?: number;
   onEnter?: () => void;
+  type?: 'text' | 'password' | 'url' | 'email';
 }) {
   return (
     <input
       className="input"
+      type={type}
       value={value}
       inputMode={inputMode}
       maxLength={maxLength}
