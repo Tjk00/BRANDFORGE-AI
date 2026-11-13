@@ -13,3 +13,12 @@ not_found_handling = "single-page-application"
 
 # Optional AI provider secrets:
 #   npx wrangler secret put AI_API_KEY --config workers/wrangler.toml
+#
+# Accounts (optional). Create the database once, then uncomment:
+#   npx wrangler d1 create brandforge-ai
+#   npx wrangler d1 execute brandforge-ai --remote --file=./schema.sql
+#
+# [[d1_databases]]
+# binding = "BF_KV"
+# database_name = "brandforge-ai"
+# database_id = "<your-database-id>"

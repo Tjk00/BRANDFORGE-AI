@@ -9,6 +9,20 @@ pages_build_output_dir = "dist"
 [vars]
 APP_NAME = "BRANDFORGE AI"
 
+# Optional: promote this email to administrator on registration.
+# ADMIN_EMAIL = "you@example.com"
+
+# Accounts (optional but recommended). Without a D1 binding the studio still
+# runs, but projects stay in the visitor's browser instead of an account.
+#   npx wrangler d1 create brandforge-ai
+#   npx wrangler d1 execute brandforge-ai --remote --file=./schema.sql
+# then paste the printed database_id below.
+#
+# [[d1_databases]]
+# binding = "BF_KV"
+# database_name = "brandforge-ai"
+# database_id = "<your-database-id>"
+
 # Optional AI provider (leave unset to use the built-in deterministic engines):
 #   npx wrangler pages secret put AI_API_KEY
 #   npx wrangler pages secret put AI_BASE_URL

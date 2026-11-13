@@ -7,3 +7,4 @@ server-dist/
 coverage/
 .DS_Store
 .wrangler/
+data/
