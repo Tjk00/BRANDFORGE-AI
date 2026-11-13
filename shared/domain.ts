@@ -97,10 +97,4 @@ export interface BannerSpec {
   note: string;
 }
 
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  updatedAt: string;
-  nicheId: string | null;
-  paletteId: string;
-}
+
