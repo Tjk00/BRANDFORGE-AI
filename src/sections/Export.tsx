@@ -23,9 +23,9 @@ export default function Export({ project, update, go }: SectionProps) {
     setPercent(5);
     setStep('Preparing brand kit…');
     try {
-      const blob = await buildBrandKitZip(project, (message, pct) => {
-        setStep(message);
-        setPercent(pct);
+      const blob = await buildBrandKitZip(project, (progress) => {
+        setStep(progress.step);
+        setPercent(progress.percent);
       });
       const filename = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'brand'}-brand-kit.zip`;
       downloadBlob(blob, filename);
