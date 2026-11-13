@@ -146,6 +146,22 @@ export const IconAlert = (p: IconProps) => (
   </svg>
 );
 
+export const IconPackage = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
+    <path d="M4 7.5l8 4.5 8-4.5" />
+    <path d="M12 12v9" />
+  </svg>
+);
+
+export const IconUpload = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M12 16V4" />
+    <path d="M7 9l5-5 5 5" />
+    <path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" />
+  </svg>
+);
+
 export const IconClose = (p: IconProps) => (
   <svg {...base(p)}>
     <path d="M6 6l12 12M18 6L6 18" />
