@@ -29,6 +29,7 @@ export default function Export({ project, update, go }: SectionProps) {
       });
       const filename = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'brand'}-brand-kit.zip`;
       downloadBlob(blob, filename);
+      update({ lastExportedAt: new Date().toISOString() });
       toast(`Brand kit downloaded (${filename})`);
       setPercent(100);
       setStep('Done');

@@ -42,6 +42,8 @@ export interface BrandProject {
   audience?: string;
   tone?: string;
   favorites?: string[];
+  /** Set when a brand kit ZIP was actually downloaded. */
+  lastExportedAt?: string;
 }
 
 export interface AiSettings {
