@@ -51,11 +51,131 @@ export interface D1StatementLike {
 
 export interface D1Like {
   prepare(query: string): D1StatementLike;
+  /** Optional multi-statement execution, used by migrations when available. */
+  exec?(query: string): Promise<unknown>;
+}
+
+/** How the running host stores data, reported by /api/health. */
+export interface StorageInfo {
+  mode: 'd1' | 'file' | 'memory' | 'none';
+  /** True only when the store survives a redeploy (D1). */
+  durable: boolean;
+  migrationsApplied?: number;
+  migrationsPending?: number;
+  error?: string;
+}
+
+/**
+ * A SQL project table.
+ *
+ * When the driver provides one, projects are read and written with an owner in
+ * the WHERE clause, so isolation is enforced by the database instead of by a
+ * JavaScript comparison after a full read.
+ */
+export interface ProjectTable {
+  putProject(owner: string, project: BrandProject): Promise<void>;
+  readProject(owner: string, projectId: string): Promise<BrandProject | null>;
+  listProjects(owner: string): Promise<BrandProject[]>;
+  removeProject(owner: string, projectId: string): Promise<boolean>;
+  ownerOf(projectId: string): Promise<string | null>;
+  countProjects(): Promise<number>;
+}
+
+export function projectTableOf(kv: KvDriver): ProjectTable | null {
+  const candidate = kv as Partial<ProjectTable>;
+  return typeof candidate.putProject === 'function' && typeof candidate.readProject === 'function'
+    ? (kv as ProjectTable)
+    : null;
+}
+
+function readBody(body: string): BrandProject | null {
+  return parseJson<BrandProject>(body);
+}
+
+/** D1 implementation of the project table (see shared/migrations.ts). */
+export class D1Projects implements ProjectTable {
+  constructor(private readonly db: D1Like) {}
+
+  async putProject(owner: string, project: BrandProject): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO bf_projects (owner, id, created_at, updated_at, body) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(owner, id) DO UPDATE SET updated_at = excluded.updated_at, body = excluded.body`,
+      )
+      .bind(owner, project.id, project.createdAt ?? '', project.updatedAt ?? '', JSON.stringify(project))
+      .run();
+  }
+
+  async readProject(owner: string, projectId: string): Promise<BrandProject | null> {
+    const row = await this.db
+      .prepare('SELECT body FROM bf_projects WHERE owner = ? AND id = ?')
+      .bind(owner, projectId)
+      .first<{ body: string }>();
+    return row ? readBody(row.body) : null;
+  }
+
+  async listProjects(owner: string): Promise<BrandProject[]> {
+    const result = await this.db
+      .prepare('SELECT body FROM bf_projects WHERE owner = ? ORDER BY updated_at DESC')
+      .bind(owner)
+      .all<{ body: string }>();
+    return (result.results ?? [])
+      .map((row) => readBody(row.body))
+      .filter((project): project is BrandProject => Boolean(project));
+  }
+
+  async removeProject(owner: string, projectId: string): Promise<boolean> {
+    const existing = await this.readProject(owner, projectId);
+    if (!existing) return false;
+    await this.db.prepare('DELETE FROM bf_projects WHERE owner = ? AND id = ?').bind(owner, projectId).run();
+    return true;
+  }
+
+  async ownerOf(projectId: string): Promise<string | null> {
+    const row = await this.db
+      .prepare('SELECT owner FROM bf_projects WHERE id = ? LIMIT 1')
+      .bind(projectId)
+      .first<{ owner: string }>();
+    return row?.owner ?? null;
+  }
+
+  async countProjects(): Promise<number> {
+    const row = await this.db.prepare('SELECT COUNT(*) AS total FROM bf_projects').first<{ total: number }>();
+    return Number(row?.total ?? 0);
+  }
 }
 
 /** D1 needs `CREATE TABLE IF NOT EXISTS bf_kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)`. */
-export class D1Kv implements KvDriver {
-  constructor(private readonly db: D1Like) {}
+export class D1Kv implements KvDriver, ProjectTable {
+  private readonly projects: D1Projects;
+
+  constructor(private readonly db: D1Like) {
+    this.projects = new D1Projects(db);
+  }
+
+  putProject(owner: string, project: BrandProject): Promise<void> {
+    return this.projects.putProject(owner, project);
+  }
+
+  readProject(owner: string, projectId: string): Promise<BrandProject | null> {
+    return this.projects.readProject(owner, projectId);
+  }
+
+  listProjects(owner: string): Promise<BrandProject[]> {
+    return this.projects.listProjects(owner);
+  }
+
+  removeProject(owner: string, projectId: string): Promise<boolean> {
+    return this.projects.removeProject(owner, projectId);
+  }
+
+  ownerOf(projectId: string): Promise<string | null> {
+    return this.projects.ownerOf(projectId);
+  }
+
+  countProjects(): Promise<number> {
+    return this.projects.countProjects();
+  }
 
   async get(key: string): Promise<string | null> {
     const row = await this.db.prepare('SELECT v FROM bf_kv WHERE k = ?').bind(key).first<{ v: string }>();
@@ -189,7 +309,12 @@ export const DEFAULT_PROVIDERS: ProviderConfig = {
 /* ---------------------------------------------------------------- repository */
 
 export class Repository {
-  constructor(private readonly kv: KvDriver) {}
+  /** Non-null on hosts whose driver exposes the SQL project table (D1). */
+  private readonly table: ProjectTable | null;
+
+  constructor(private readonly kv: KvDriver) {
+    this.table = projectTableOf(kv);
+  }
 
   /* ---------------------------------------------------------------- accounts */
 
@@ -304,18 +429,22 @@ export class Repository {
   /* ---------------------------------------------------------------- projects */
 
   async projectIds(userId: string): Promise<string[]> {
+    if (this.table) return (await this.table.listProjects(userId)).map((project) => project.id);
     return parseJson<string[]>(await this.kv.get(`userprojects:${userId}`)) ?? [];
   }
 
   async projectCount(userId: string): Promise<number> {
+    if (this.table) return (await this.table.listProjects(userId)).length;
     return (await this.projectIds(userId)).length;
   }
 
   async allProjectsCount(): Promise<number> {
+    if (this.table) return this.table.countProjects();
     return (await this.kv.list('project:')).length;
   }
 
   async listProjects(userId: string): Promise<BrandProject[]> {
+    if (this.table) return this.table.listProjects(userId);
     const ids = await this.projectIds(userId);
     const rows = await Promise.all(ids.map((id) => this.getProject(userId, id)));
     return rows
@@ -324,6 +453,7 @@ export class Repository {
   }
 
   async getProject(userId: string, projectId: string): Promise<BrandProject | null> {
+    if (this.table) return this.table.readProject(userId, projectId);
     const stored = parseJson<StoredProject>(await this.kv.get(`project:${projectId}`));
     if (!stored || stored.owner !== userId) return null;
     return stored.project;
@@ -336,6 +466,30 @@ export class Repository {
     const serialized = JSON.stringify(project);
     if (serialized.length > MAX_PROJECT_BYTES) {
       throw new AppError(413, 'That project is too large to save.');
+    }
+
+    if (this.table) {
+      const user = await this.getUser(userId);
+      if (!user) throw new AppError(401, 'Sign in to save projects.');
+
+      const owner = await this.table.ownerOf(project.id);
+      if (owner && owner !== userId) {
+        throw new AppError(403, 'That project belongs to another account.');
+      }
+
+      if (!owner) {
+        const limit = getPlan(user.plan).projectLimit;
+        const used = (await this.table.listProjects(userId)).length;
+        if (used >= limit) {
+          throw new AppError(
+            402,
+            `Your ${getPlan(user.plan).name} plan allows ${limit} saved brands. Delete a project to free a slot.`,
+          );
+        }
+      }
+
+      await this.table.putProject(userId, project);
+      return project;
     }
 
     const existing = parseJson<StoredProject>(await this.kv.get(`project:${project.id}`));
@@ -366,6 +520,7 @@ export class Repository {
   }
 
   async deleteProject(userId: string, projectId: string): Promise<boolean> {
+    if (this.table) return this.table.removeProject(userId, projectId);
     const stored = parseJson<StoredProject>(await this.kv.get(`project:${projectId}`));
     if (!stored || stored.owner !== userId) return false;
     await this.kv.del(`project:${projectId}`);
