@@ -51,7 +51,9 @@ function sessionCookie(response: { headers?: Record<string, string> }): string {
 
 async function register(store: Repository, email: string) {
   const response = await call(store, 'POST', '/api/auth/register', {
-    body: { email, password: PASSWORD, name: 'Persistence Test' },
+    email,
+    password: PASSWORD,
+    name: 'Persistence Test',
   });
   expect(response.status).toBe(200);
   const body = response.body as { user: { id: string } };
@@ -59,7 +61,7 @@ async function register(store: Repository, email: string) {
 }
 
 async function login(store: Repository, email: string) {
-  const response = await call(store, 'POST', '/api/auth/login', { body: { email, password: PASSWORD } });
+  const response = await call(store, 'POST', '/api/auth/login', { email, password: PASSWORD });
   expect(response.status).toBe(200);
   return sessionCookie(response);
 }
