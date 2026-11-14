@@ -11,6 +11,7 @@ import {
 } from './lib/storage';
 import { account, ApiError, type PlanInfo, type SessionState } from './lib/cloud';
 import { STAGES, nextStage, projectProgress, stageStateFor, stageStates, type SectionId } from './lib/nav';
+import { authGateVisible } from './lib/auth-gate';
 import { Btn, Notice, ToastProvider, useToast } from './components/ui';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -481,7 +482,7 @@ function Studio() {
     );
   }
 
-  if (showAuth && !session.user && session.available) {
+  if (authGateVisible({ showAuth, signedIn: Boolean(session.user), serverAvailable: Boolean(session.available) })) {
     return (
       <Auth
         onSignedIn={(nextSession) => void afterSignIn(nextSession)}
