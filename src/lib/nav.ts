@@ -83,7 +83,11 @@ export interface StageState extends StageDef {
  * holds. Nothing is marked complete because a screen was visited.
  */
 export function stageStates(project: BrandProject): StageState[] {
-  const name = project.chosenName || project.workingTitle || '';
+  const rawName = project.chosenName || project.workingTitle || '';
+  // The placeholder title means the brand is not named yet, so Design must not
+  // look complete on a brand-new project.
+  const trimmed = rawName.trim();
+  const name = trimmed && trimmed !== DEFAULT_BRAND_TITLE ? trimmed : '';
 
   const state: Record<string, { done: boolean; detail: string }> = {
     research: {

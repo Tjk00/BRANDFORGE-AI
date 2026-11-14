@@ -1,4 +1,5 @@
 import type { AiSettings, BrandProject, ProjectSummary } from '../../shared/types';
+import { DEFAULT_BRAND_TITLE } from '../../shared/brand';
 
 const PROJECT_KEY = 'brandforge.projects.v1';
 const SETTINGS_KEY = 'brandforge.settings.v1';
@@ -77,7 +78,7 @@ export function newProject(paletteId = 'ember-forge'): BrandProject {
     id,
     createdAt: now,
     updatedAt: now,
-    workingTitle: 'Untitled brand',
+    workingTitle: DEFAULT_BRAND_TITLE,
     chosenName: '',
     tagline: '',
     nicheId: null,

@@ -21,6 +21,9 @@ export interface BrandCopy {
   keywords: string[];
 }
 
+/** Title used until the user names the brand. Treated as "no name yet". */
+export const DEFAULT_BRAND_TITLE = 'Untitled brand';
+
 export interface BrandProject {
   id: string;
   createdAt: string;
