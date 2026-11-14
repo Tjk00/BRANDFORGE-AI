@@ -10,11 +10,12 @@ import {
   saveSettings as persistSettings,
 } from './lib/storage';
 import { account, ApiError, type PlanInfo, type SessionState } from './lib/cloud';
-import { STAGES, nextStage, projectProgress, stageStates, type SectionId } from './lib/nav';
+import { STAGES, nextStage, projectProgress, stageStateFor, stageStates, type SectionId } from './lib/nav';
 import { Btn, Notice, ToastProvider, useToast } from './components/ui';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Admin from './components/Admin';
+import ErrorBoundary from './components/ErrorBoundary';
 import Research from './sections/Research';
 import Names from './sections/Names';
 import Handles from './sections/Handles';
@@ -528,7 +529,7 @@ function Studio() {
 
           <span className="bf-eyebrow">Workflow</span>
           {STAGES.map((stage) => {
-            const state = active ? stageStates(active)[stage.index] : null;
+            const state = active ? stageStateFor(active, stage.id) : null;
             return (
               <button
                 key={stage.id}
@@ -614,7 +615,7 @@ function Studio() {
                 <>
                   <div className="bf-stage-rail">
                     {STAGES.map((stage) => {
-                      const state = stageStates(active)[stage.index];
+                      const state = stageStateFor(active, stage.id);
                       return (
                         <button
                           key={stage.id}
@@ -622,10 +623,10 @@ function Studio() {
                           className={`bf-stage${view === stage.id ? ' is-active' : ''}${state.done ? ' is-done' : ''}`}
                           onClick={() => setView(stage.id)}
                         >
-                          <span className="bf-stage-index">{state.done ? <IconCheck width={12} height={12} /> : stage.index + 1}</span>
+                          <span className="bf-stage-index">{state?.done ? <IconCheck width={12} height={12} /> : stage.index + 1}</span>
                           <span className="bf-stage-body">
                             <span className="bf-stage-title">{stage.short}</span>
-                            <span className="bf-stage-detail">{state.done ? 'Complete' : stage.blurb}</span>
+                            <span className="bf-stage-detail">{state?.done ? 'Complete' : stage.blurb}</span>
                           </span>
                         </button>
                       );
@@ -648,7 +649,17 @@ function Studio() {
                 </>
               ) : null}
 
-              {renderSection()}
+              <ErrorBoundary
+                key={view}
+                label={
+                  isStage
+                    ? STAGES[stageIndex].title
+                    : `${view.slice(0, 1).toUpperCase()}${view.slice(1)} screen`
+                }
+                onReset={() => setView('home')}
+              >
+                {renderSection()}
+              </ErrorBoundary>
 
               {isStage && active ? (
                 <div className="bf-inline">
@@ -691,7 +702,9 @@ function Studio() {
 export default function App() {
   return (
     <ToastProvider>
-      <Studio />
+      <ErrorBoundary label="BrandForge AI" onReset={() => window.location.reload()}>
+        <Studio />
+      </ErrorBoundary>
     </ToastProvider>
   );
 }
