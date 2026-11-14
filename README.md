@@ -59,6 +59,19 @@ npm run dev:api    # API on :8787
 | `npm run typecheck` | `tsc --noEmit` across client, server, shared and functions |
 | `npm test` | Vitest suite (engines, availability rules, API router) |
 | `npm run check` | typecheck + tests + build |
+| `npm run store:export` | Dump users, projects and settings to JSON |
+| `npm run store:verify` | Validate a backup file without importing it |
+| `npm run store:import` | Restore a backup, skipping rows that already exist |
+
+---
+
+## Persistence
+
+Accounts, brands and generated assets are stored in Cloudflare D1 (SQLite) when
+a database is configured, and in a JSON file for local development otherwise.
+Migrations run on startup and are recorded in a ledger, so restarts and
+redeploys never rebuild or wipe existing data. See **[PERSISTENCE.md](PERSISTENCE.md)**
+for the schema, indexes, backup/restore commands and the exact D1 setup steps.
 
 ---
 
@@ -95,6 +108,11 @@ npx wrangler deploy --config workers/wrangler.toml
 ### Any Node host
 
 `npm run build && npm start` serves both client and API on `PORT` (default `8787`) bound to `0.0.0.0`.
+
+For data that must survive redeploys, set `D1_ACCOUNT_ID`, `D1_DATABASE_ID` and
+`CLOUDFLARE_API_TOKEN`; the server then talks to Cloudflare D1 over HTTPS.
+Without them it uses a local file, which is fine for development but is lost
+when the container image is rebuilt. Details: [PERSISTENCE.md](PERSISTENCE.md).
 
 ### iPhone
 
