@@ -125,6 +125,18 @@ export function stageStates(project: BrandProject): StageState[] {
   return STAGES.map((stage) => ({ ...stage, ...(state[stage.id] ?? { done: false, detail: '' }) }));
 }
 
+/**
+ * Completion state for one stage, looked up by id.
+ *
+ * Always use this (or index the array positionally) instead of
+ * `stageStates(project)[stage.index]`: `stage.index` is the 1-based display
+ * number, so that expression reads the wrong row for every stage and returns
+ * `undefined` for the last one, which crashed the workspace rail.
+ */
+export function stageStateFor(project: BrandProject, id: SectionId): StageState | null {
+  return stageStates(project).find((stage) => stage.id === id) ?? null;
+}
+
 export function projectProgress(project: BrandProject): number {
   const states = stageStates(project);
   const done = states.filter((stage) => stage.done).length;
