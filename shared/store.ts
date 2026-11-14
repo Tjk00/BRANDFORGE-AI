@@ -79,6 +79,8 @@ export interface ProjectTable {
   removeProject(owner: string, projectId: string): Promise<boolean>;
   ownerOf(projectId: string): Promise<string | null>;
   countProjects(): Promise<number>;
+  /** Every owner's projects, used only by backup and admin statistics. */
+  exportProjects(): Promise<{ owner: string; project: BrandProject }[]>;
 }
 
 export function projectTableOf(kv: KvDriver): ProjectTable | null {
@@ -143,6 +145,18 @@ export class D1Projects implements ProjectTable {
     const row = await this.db.prepare('SELECT COUNT(*) AS total FROM bf_projects').first<{ total: number }>();
     return Number(row?.total ?? 0);
   }
+
+  async exportProjects(): Promise<{ owner: string; project: BrandProject }[]> {
+    const result = await this.db
+      .prepare('SELECT owner, body FROM bf_projects ORDER BY updated_at DESC')
+      .all<{ owner: string; body: string }>();
+    return (result.results ?? [])
+      .map((row) => {
+        const project = readBody(row.body);
+        return project ? { owner: row.owner, project } : null;
+      })
+      .filter((entry): entry is { owner: string; project: BrandProject } => Boolean(entry));
+  }
 }
 
 /** D1 needs `CREATE TABLE IF NOT EXISTS bf_kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)`. */
@@ -175,6 +189,10 @@ export class D1Kv implements KvDriver, ProjectTable {
 
   countProjects(): Promise<number> {
     return this.projects.countProjects();
+  }
+
+  exportProjects(): Promise<{ owner: string; project: BrandProject }[]> {
+    return this.projects.exportProjects();
   }
 
   async get(key: string): Promise<string | null> {
