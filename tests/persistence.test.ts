@@ -125,6 +125,8 @@ function brandProject(id: string, name: string): BrandProject {
       youtubeDescription: `${name} publishes kettlebell sessions.`,
       seoKeywords: ['kettlebell', 'mobility'],
       marketingMessages: ['Start with one bell.'],
+      tone: 'bold',
+      generatedAt: NOW,
     },
     audience: 'Busy professionals',
     tone: 'bold',

@@ -86,7 +86,7 @@ export interface ProjectTable {
 export function projectTableOf(kv: KvDriver): ProjectTable | null {
   const candidate = kv as Partial<ProjectTable>;
   return typeof candidate.putProject === 'function' && typeof candidate.readProject === 'function'
-    ? (kv as ProjectTable)
+    ? (kv as unknown as ProjectTable)
     : null;
 }
 
