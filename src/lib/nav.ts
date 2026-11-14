@@ -1,4 +1,5 @@
 import type { BrandProject } from '../../shared/types';
+import { DEFAULT_BRAND_TITLE } from '../../shared/brand';
 
 export type SectionId =
   | 'home'
