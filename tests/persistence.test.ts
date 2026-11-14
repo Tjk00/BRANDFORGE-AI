@@ -232,9 +232,10 @@ describe('brand data survives real persistence events', () => {
 
     const list = await call(boot.repository as Repository, 'GET', '/api/projects', undefined, cookie);
     expect(list.status).toBe(200);
-    const body = list.body as { projects: { id: string; name: string }[] };
+    const body = list.body as { projects: BrandProject[]; limit: number; plan: string };
     expect(body.projects.map((entry) => entry.id)).toContain('bp_list');
-    expect(body.projects[0]?.name).toBe('Northwind');
+    expect(body.projects[0]?.chosenName).toBe('Northwind');
+    expect(body.limit).toBeGreaterThan(0);
   });
 
   it('enforces the plan limit through the SQL project count', async () => {
