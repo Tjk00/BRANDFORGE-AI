@@ -623,7 +623,7 @@ function Studio() {
                           className={`bf-stage${view === stage.id ? ' is-active' : ''}${state?.done ? ' is-done' : ''}`}
                           onClick={() => setView(stage.id)}
                         >
-                          <span className="bf-stage-index">{state?.done ? <IconCheck width={12} height={12} /> : stage.index + 1}</span>
+                          <span className="bf-stage-index">{state?.done ? <IconCheck width={12} height={12} /> : stage.index}</span>
                           <span className="bf-stage-body">
                             <span className="bf-stage-title">{stage.short}</span>
                             <span className="bf-stage-detail">{state?.done ? 'Complete' : stage.blurb}</span>
