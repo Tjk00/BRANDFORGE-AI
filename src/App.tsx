@@ -244,7 +244,11 @@ function Studio() {
     setActiveId(local[0]?.id ?? null);
     setSession({ user: null, plans: session.plans, projectLimit: 0, available: session.available });
     setView('home');
-    toast('Signed out — browser brands restored');
+    // Return to the sign-in screen after an explicit sign-out so the next person on
+    // this device is not shown the browser's local brands. Local mode stays one tap
+    // away through "Continue without an account".
+    setShowAuth(session.available);
+    toast(session.available ? 'Signed out' : 'Signed out — browser brands restored');
   }, [session.plans, session.available, toast]);
 
   const afterSignIn = useCallback(
