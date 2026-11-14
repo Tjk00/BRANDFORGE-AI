@@ -5,16 +5,38 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { routeApi } from '../shared/api';
 import { logEvent } from '../shared/logger';
-import { Repository } from '../shared/store';
+import { bootstrapD1, bootstrapFile, lazyBootstrap, type StoreBootstrap } from '../shared/bootstrap';
+import { d1FromEnv } from './d1-http';
 import { FileKv } from './file-store';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(here, '..');
 const distDir = existsSync(path.join(projectRoot, 'dist')) ? path.join(projectRoot, 'dist') : path.join(here, '..', 'dist');
 
-// Accounts persist to disk on this host. Cloudflare deployments use D1 instead.
+/*
+ * Storage selection, in priority order:
+ *   1. Cloudflare D1 over HTTPS when D1_ACCOUNT_ID/D1_DATABASE_ID/CLOUDFLARE_API_TOKEN
+ *      are present — the only mode that survives a redeploy.
+ *   2. A partially configured D1 fails closed with a visible reason instead of
+ *      silently falling back to throwaway storage.
+ *   3. The local JSON file, which keeps `npm run dev` and offline work intact.
+ * Migrations run once on the first request, before any account route is served.
+ */
 const dataDir = process.env.BRANDFORGE_DATA_DIR ?? path.join(projectRoot, 'data');
-const repository = new Repository(new FileKv(path.join(dataDir, 'store.json')));
+const d1 = d1FromEnv(process.env as Record<string, string | undefined>);
+
+const storageReady: () => Promise<StoreBootstrap> =
+  d1.kind === 'configured'
+    ? lazyBootstrap(() => bootstrapD1(d1.db))
+    : d1.kind === 'incomplete'
+      ? async () => ({
+          storage: {
+            mode: 'd1',
+            durable: true,
+            error: `Cloudflare D1 is partially configured; missing ${d1.missing.join(', ')}.`,
+          },
+        })
+      : lazyBootstrap(async () => bootstrapFile(new FileKv(path.join(dataDir, 'store.json'))));
 
 const app = express();
 app.disable('x-powered-by');
@@ -43,6 +65,7 @@ app.use((req, res, next) => {
 
 app.all('/api/*splat', async (req, res) => {
   try {
+    const { repository, storage } = await storageReady();
     const response = await routeApi({
       method: req.method,
       path: req.path,
@@ -50,6 +73,7 @@ app.all('/api/*splat', async (req, res) => {
       headers: req.headers as Record<string, string | undefined>,
       env: process.env as Record<string, string | undefined>,
       store: repository,
+      storage,
       clientIp: req.ip,
       requestId: (req as express.Request & { requestId?: string }).requestId,
     });
@@ -95,6 +119,14 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 });
 
 const port = Number(process.env.PORT ?? 8787);
-app.listen(port, '0.0.0.0', () => {
-  logEvent('info', 'server.started', { port, distDir });
+app.listen(port, '0.0.0.0', async () => {
+  const { storage } = await storageReady();
+  logEvent(storage.error ? 'error' : 'info', 'server.started', {
+    port,
+    distDir,
+    storage: storage.mode,
+    durable: storage.durable,
+    ...(storage.error ? { storageError: storage.error } : {}),
+    ...(storage.durable ? {} : { warning: 'Accounts are lost on redeploy without D1 or a persistent disk.' }),
+  });
 });

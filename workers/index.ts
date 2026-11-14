@@ -1,6 +1,7 @@
 import { routeApi } from '../shared/api';
+import { bootstrapD1, lazyBootstrap, type StoreBootstrap } from '../shared/bootstrap';
 import { logEvent } from '../shared/logger';
-import { D1Kv, Repository, type D1Like } from '../shared/store';
+import type { D1Like } from '../shared/store';
 
 /**
  * Standalone Cloudflare Worker entry point.
@@ -16,12 +17,20 @@ interface Env {
   BF_KV?: D1Like;
 }
 
-let cachedRepository: Repository | null = null;
+let cachedStorage: (() => Promise<StoreBootstrap>) | null = null;
 
-function repositoryFor(env: Env): Repository | undefined {
-  if (!env.BF_KV) return undefined;
-  if (!cachedRepository) cachedRepository = new Repository(new D1Kv(env.BF_KV));
-  return cachedRepository;
+/**
+ * Migrations run once per isolate on the first API call, so a fresh D1 database
+ * is ready before any account route is served.
+ */
+function storageFor(env: Env): Promise<StoreBootstrap> {
+  if (!cachedStorage) {
+    const binding = env.BF_KV;
+    cachedStorage = binding
+      ? lazyBootstrap(() => bootstrapD1(binding))
+      : async () => ({ storage: { mode: 'none' as const, durable: false } });
+  }
+  return cachedStorage();
 }
 
 function requestIdFor(request: Request): string {
@@ -38,6 +47,7 @@ export default {
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
       const requestId = requestIdFor(request);
       try {
+        const { repository, storage } = await storageFor(env);
         let body: unknown;
         if (request.method !== 'GET' && request.method !== 'HEAD') {
           try {
@@ -58,7 +68,8 @@ export default {
             AI_MODEL: env.AI_MODEL,
             ADMIN_EMAIL: env.ADMIN_EMAIL,
           },
-          store: repositoryFor(env),
+          store: repository,
+          storage,
           clientIp:
             request.headers.get('cf-connecting-ip') ??
             request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??

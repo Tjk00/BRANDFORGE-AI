@@ -7,7 +7,7 @@ import { getPlatform, isPlatformId, PLATFORMS, PLATFORM_IDS } from './platforms'
 import { routeAccounts } from './accounts';
 import { logEvent } from './logger';
 import { rateLimit, RATE_RULES } from './rate-limit';
-import { AppError, type Repository } from './store';
+import { AppError, type Repository, type StorageInfo } from './store';
 import type { AiSettings, NameStyle, NameTarget, PlatformId } from './types';
 
 export interface ApiRequest {
@@ -19,6 +19,8 @@ export interface ApiRequest {
   headers?: Record<string, string | undefined>;
   /** Present when the host has a storage driver (file on Node, D1 on Cloudflare). */
   store?: Repository;
+  /** Where that driver stores data, reported by /api/health. */
+  storage?: StorageInfo;
   /** Caller address, used for rate limiting. Internal calls omit it. */
   clientIp?: string;
   /** Correlation id echoed back and written to the structured log. */
@@ -380,6 +382,7 @@ async function handleApiRequest(request: ApiRequest): Promise<ApiResponse> {
       version: '1.0.0',
       aiConfigured: Boolean(env.AI_API_KEY),
       accountsEnabled: Boolean(request.store),
+      storage: request.storage ?? { mode: request.store ? 'memory' : 'none', durable: false },
       platforms: PLATFORM_IDS.length,
       niches: NICHES.length,
       palettes: PALETTES.length,
@@ -425,7 +428,9 @@ async function handleApiRequest(request: ApiRequest): Promise<ApiResponse> {
       return fail(
         503,
         'Accounts are not enabled on this deployment.',
-        'This host has no storage binding. The studio still works locally without an account.',
+        request.storage?.error
+          ? `Storage is unavailable, so accounts are paused and no data was changed. ${request.storage.error}`
+          : 'This host has no storage binding. The studio still works locally without an account.',
       );
     }
     try {
